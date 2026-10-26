@@ -1,0 +1,39 @@
+
+[
+  {
+    "project_id": "PAI001",
+    "project_name": "Rural Road Development",
+    "sector": "Roads",
+    "original_cost_crore": 120.0,
+    "expenditure_crore": 96.0,
+    "physical_progress_percent": 65,
+    "planned_completion": "2026-12-31",
+    "revised_completion": "2027-06-30",
+    "risk_status": "High",
+    "risk_reason": "Expenditure is high compared with physical progress, and the completion date has been revised."
+  },
+  {
+    "project_id": "PAI002",
+    "project_name": "District Hospital Expansion",
+    "sector": "Healthcare",
+    "original_cost_crore": 80.0,
+    "expenditure_crore": 32.0,
+    "physical_progress_percent": 45,
+    "planned_completion": "2027-03-31",
+    "revised_completion": null,
+    "risk_status": "Low",
+    "risk_reason": "The sample record has no revised completion date and does not indicate a known schedule delay."
+  },
+  {
+    "project_id": "PAI003",
+    "project_name": "Urban Water Supply",
+    "sector": "Water",
+    "original_cost_crore": 200.0,
+    "expenditure_crore": 150.0,
+    "physical_progress_percent": 55,
+    "planned_completion": "2027-09-30",
+    "revised_completion": "2028-03-31",
+    "risk_status": "Medium",
+    "risk_reason": "The sample record shows a revised completion date and expenditure that should be reviewed against physical progress."
+  }
+]
