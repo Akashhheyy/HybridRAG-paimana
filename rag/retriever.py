@@ -49,12 +49,13 @@ class HybridRetriever:
             convert_to_tensor=True
         )
 
+    
     def search(self, question, top_k=3):
-        # Retrieve by keywords
+        # Keyword search
         tokens = question.lower().split()
         keyword_scores = self.bm25.get_scores(tokens)
 
-        # Retrieve by meaning
+        # Semantic search
         query_embedding = self.model.encode(
             question,
             convert_to_tensor=True
@@ -64,34 +65,42 @@ class HybridRetriever:
             self.embeddings
         )[0]
 
-        # Normalize both score sets
-        keyword_max = max(keyword_scores) if len(keyword_scores) else 0
-        semantic_max = float(semantic_scores.max())
-
         results = []
 
         for index, project in enumerate(self.projects):
-            keyword_score = (
-                float(keyword_scores[index]) / keyword_max
-                if keyword_max > 0 else 0
-            )
-            semantic_score = (
-                float(semantic_scores[index]) / semantic_max
-                if semantic_max > 0 else 0
+            keyword_score = float(keyword_scores[index])
+            semantic_score = float(semantic_scores[index])
+
+            # Combine raw BM25 and semantic scores
+            # Semantic cosine similarity is typically between -1 and 1.
+            # BM25 is unbounded, so normalize keyword scores across projects.
+            max_keyword = max(keyword_scores) if len(keyword_scores) else 0
+
+            normalized_keyword = (
+                keyword_score / max_keyword
+                if max_keyword > 0 else 0
             )
 
-            # Combine keyword and semantic scores
+            # Shift cosine similarity to a 0–1 range
+            normalized_semantic = (
+                max(0.0, min(1.0, (semantic_score + 1.0) / 2.0))
+            )
+
             hybrid_score = (
-                0.4 * keyword_score + 0.6 * semantic_score
+                0.4 * normalized_keyword
+                + 0.6 * normalized_semantic
             )
 
             results.append({
                 "project": project,
-                "score": hybrid_score
+                "score": hybrid_score,
+                "keyword_score": keyword_score,
+                "semantic_score": semantic_score,
             })
 
         results.sort(
             key=lambda item: item["score"],
             reverse=True
         )
+
         return results[:top_k]

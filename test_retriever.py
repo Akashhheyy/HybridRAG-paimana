@@ -3,15 +3,24 @@ from rag.retriever import HybridRetriever
 
 retriever = HybridRetriever()
 
-question = "Which project has a schedule delay?"
-results = retriever.search(question, top_k=3)
+questions = [
+    "Which project has a schedule delay?",
+    "Which project has a revised completion date?",
+    "Which project has high expenditure compared with physical progress?",
+]
 
-print("\nQuestion:", question)
-print("\nRelevant projects:\n")
+for question in questions:
+    print("\nQuestion:", question)
+    print("-" * 50)
 
-for result in results:
-    project = result["project"]
-    print("Project:", project["project_name"])
-    print("Risk:", project["risk_status"])
-    print("Score:", round(result["score"], 3))
-    print("-" * 40)
+    results = retriever.search(question, top_k=3)
+
+    for item in results:
+        project = item["project"]
+
+        print("Project:", project["project_name"])
+        print("Risk:", project["risk_status"])
+        print("Hybrid score:", round(item["score"], 3))
+        print("BM25 score:", round(item["keyword_score"], 3))
+        print("Semantic score:", round(item["semantic_score"], 3))
+        print()
