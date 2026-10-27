@@ -17,13 +17,48 @@ def load_projects():
         return json.load(file)
 
 
+
 def project_to_text(project):
-    """Convert a project record into searchable text."""
-    return " ".join(
+    """Convert project data into searchable text with useful synonyms."""
+    text = " ".join(
         f"{key.replace('_', ' ')}: {value}"
         for key, value in project.items()
         if value is not None
     )
+
+    planned = project.get("planned_completion")
+    revised = project.get("revised_completion")
+
+    extra_terms = []
+
+    if revised:
+        extra_terms.extend([
+            "revised completion date",
+            "schedule delay",
+            "project delayed",
+            "completion date extended",
+            "schedule overrun",
+        ])
+
+        if planned and revised > planned:
+            extra_terms.extend([
+                "delayed beyond planned completion",
+                "time overrun",
+                "late completion",
+            ])
+
+    physical = project.get("physical_progress")
+    expenditure = project.get("expenditure")
+
+    if physical is not None and expenditure is not None:
+        if expenditure > physical:
+            extra_terms.extend([
+                "expenditure exceeds physical progress",
+                "financial physical progress gap",
+                "high spending compared with progress",
+            ])
+
+    return text + " " + " ".join(extra_terms)
 
 
 class HybridRetriever:
@@ -50,57 +85,89 @@ class HybridRetriever:
         )
 
     
+        
     def search(self, question, top_k=3):
-        # Keyword search
-        tokens = question.lower().split()
+        import re
+
+        # Tokenize the question consistently
+        tokens = re.findall(r"\b\w+\b", question.lower())
+
+        # 1. Keyword search using BM25
         keyword_scores = self.bm25.get_scores(tokens)
 
-        # Semantic search
+        keyword_ranking = sorted(
+            range(len(self.projects)),
+            key=lambda i: keyword_scores[i],
+            reverse=True
+        )
+
+        # 2. Semantic search
         query_embedding = self.model.encode(
             question,
             convert_to_tensor=True
         )
+
         semantic_scores = util.cos_sim(
             query_embedding,
             self.embeddings
         )[0]
 
-        results = []
-
-        for index, project in enumerate(self.projects):
-            keyword_score = float(keyword_scores[index])
-            semantic_score = float(semantic_scores[index])
-
-            # Combine raw BM25 and semantic scores
-            # Semantic cosine similarity is typically between -1 and 1.
-            # BM25 is unbounded, so normalize keyword scores across projects.
-            max_keyword = max(keyword_scores) if len(keyword_scores) else 0
-
-            normalized_keyword = (
-                keyword_score / max_keyword
-                if max_keyword > 0 else 0
-            )
-
-            # Shift cosine similarity to a 0–1 range
-            normalized_semantic = (
-                max(0.0, min(1.0, (semantic_score + 1.0) / 2.0))
-            )
-
-            hybrid_score = (
-                0.4 * normalized_keyword
-                + 0.6 * normalized_semantic
-            )
-
-            results.append({
-                "project": project,
-                "score": hybrid_score,
-                "keyword_score": keyword_score,
-                "semantic_score": semantic_score,
-            })
-
-        results.sort(
-            key=lambda item: item["score"],
+        semantic_ranking = sorted(
+            range(len(self.projects)),
+            key=lambda i: float(semantic_scores[i]),
             reverse=True
         )
 
-        return results[:top_k]
+        # 3. Combine rankings using Reciprocal Rank Fusion
+        rrf_scores = {}
+        k = 60
+
+        for rank, index in enumerate(keyword_ranking):
+            rrf_scores[index] = rrf_scores.get(index, 0) + (
+                1 / (k + rank + 1)
+            )
+
+        for rank, index in enumerate(semantic_ranking):
+            rrf_scores[index] = rrf_scores.get(index, 0) + (
+                1 / (k + rank + 1)
+            )
+
+        # 4. Return ranked projects and diagnostic scores
+        ranked_indices = sorted(
+            rrf_scores,
+            key=lambda i: rrf_scores[i],
+            reverse=True
+        )
+
+        # Prioritize projects with an actual revised completion date
+        # for schedule-related questions.
+        question_lower = question.lower()
+
+        schedule_query = any(term in question_lower for term in [
+            "schedule delay",
+            "schedule delayed",
+            "revised completion date",
+            "time overrun",
+            "project delayed",
+        ])
+
+        if schedule_query:
+            ranked_indices.sort(
+                key=lambda i: (
+                    self.projects[i].get("revised_completion") is not None,
+                    rrf_scores[i],
+                ),
+                reverse=True,
+            )
+
+        results = []
+
+        for index in ranked_indices[:top_k]:
+            results.append({
+                "project": self.projects[index],
+                "score": rrf_scores[index],
+                "keyword_score": float(keyword_scores[index]),
+                "semantic_score": float(semantic_scores[index]),
+            })
+
+        return results
